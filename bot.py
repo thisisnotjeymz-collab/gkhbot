@@ -86,6 +86,10 @@ async def ping(interaction: discord.Interaction):
 
 import random
 import discord
+import os
+from openai import OpenAI
+
+client_ai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @bot.event
 async def on_message(message):
@@ -96,6 +100,29 @@ async def on_message(message):
         return
 
     content = message.content.lower()
+
+    # 🤖 AI reply pag minention ang bot
+    if bot.user in message.mentions:
+        try:
+            ai_response = client_ai.responses.create(
+                model="gpt-4o-mini",
+                input=[
+                    {
+                        "role": "system",
+                        "content": "You are the Discord bot of GKH. Reply in simple Taglish, short, natural, a little funny, and not too long."
+                    },
+                    {
+                        "role": "user",
+                        "content": message.content
+                    }
+                ]
+            )
+
+            await message.reply(ai_response.output_text)
+        except Exception as e:
+            print(f"OpenAI error: {e}")
+            await message.reply("di ako makasagot ngayon")
+        return
 
     # 🔥 ping
     if message.mention_everyone:
