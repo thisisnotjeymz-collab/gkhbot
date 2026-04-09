@@ -84,10 +84,14 @@ async def leave(interaction: discord.Interaction):
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("Bot is alive", ephemeral=True)
 
+import os
+import asyncio
 import random
 import discord
-import os
 from google import genai
+from discord.ext import commands, tasks
+
+last_ai_use = {}  # 🔥 ADD THIS
 
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
