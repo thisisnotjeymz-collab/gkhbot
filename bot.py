@@ -2,8 +2,31 @@ import os
 import asyncio
 import random
 import discord
+from google import genai
 from discord.ext import commands, tasks
 
+# 🔥 CONFIG (AI)
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+AI_MODE = os.getenv("AI_MODE", "normal")
+AI_MAX_CHARS = int(os.getenv("AI_MAX_CHARS", "300"))
+AI_COOLDOWN = int(os.getenv("AI_COOLDOWN", "3"))
+
+last_ai_use = {}
+
+def get_ai_prompt(mode):
+    if mode == "toxic":
+        return "You are the Discord bot of GKH. Reply in short Taglish. Be funny, playful, slightly toxic."
+    elif mode == "chill":
+        return "You are the Discord bot of GKH. Reply in calm, friendly, casual Taglish."
+    elif mode == "admin":
+        return "You are the Discord bot of GKH. Reply like a helpful Discord admin. Be clear and direct."
+    else:
+        return "You are the Discord bot of GKH. Reply in simple Taglish, short, natural, and a little funny."
+
+# 🔥 GEMINI
+gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+# 🔥 BOT SETUP
 statuses = [
     discord.Game("Join GKH Now"),
     discord.Game("GKH #1")
@@ -25,12 +48,14 @@ bot = commands.Bot(
     status=discord.Status.online
 )
 
+# 🔥 STATUS LOOP
 @tasks.loop(seconds=10)
 async def change_status():
     for status in statuses:
         await bot.change_presence(activity=status)
         await asyncio.sleep(10)
 
+# 🔥 VC CONNECT
 async def connect_to_vc():
     if VC_CHANNEL_ID == 0:
         print("VC_CHANNEL_ID is missing.")
@@ -62,17 +87,14 @@ async def connect_to_vc():
     except Exception as e:
         print(f"Error connecting to VC: {e}")
 
-@bot.tree.command(name="join", description="Make the bot join the VC")
+# 🔥 COMMANDS
+@bot.tree.command(name="join")
 async def join(interaction: discord.Interaction):
     await connect_to_vc()
     await interaction.response.send_message("Trying to join VC", ephemeral=True)
 
-@bot.tree.command(name="leave", description="Make the bot leave the VC")
+@bot.tree.command(name="leave")
 async def leave(interaction: discord.Interaction):
-    if interaction.guild is None:
-        await interaction.response.send_message("Server only command.", ephemeral=True)
-        return
-
     vc = interaction.guild.voice_client
     if vc and vc.is_connected():
         await vc.disconnect()
@@ -80,21 +102,11 @@ async def leave(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("Bot is not in a VC", ephemeral=True)
 
-@bot.tree.command(name="ping", description="Check if the bot is online")
+@bot.tree.command(name="ping")
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("Bot is alive", ephemeral=True)
 
-import os
-import asyncio
-import random
-import discord
-from google import genai
-from discord.ext import commands, tasks
-
-last_ai_use = {}  # 🔥 ADD THIS
-
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
+# 🔥 MAIN MESSAGE EVENT
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -105,12 +117,11 @@ async def on_message(message):
 
     content = message.content.lower()
 
-    # 🤖 GEMINI AI reply pag minention ang bot
+    # 🤖 GEMINI AI
     if bot.user in message.mentions:
         user_id = message.author.id
         now = asyncio.get_event_loop().time()
 
-        # cooldown
         if user_id in last_ai_use:
             if now - last_ai_use[user_id] < AI_COOLDOWN:
                 return
@@ -122,11 +133,7 @@ async def on_message(message):
 
             response = gemini_client.models.generate_content(
                 model=MODEL_NAME,
-                contents=f"""
-{prompt}
-
-User message: {message.content}
-"""
+                contents=f"{prompt}\n\nUser message: {message.content}"
             )
 
             reply_text = getattr(response, "text", None)
@@ -141,50 +148,32 @@ User message: {message.content}
             await message.channel.send("di ako makasagot ngayon")
 
         return
-    # 🔥 ALL RESPONSES SYSTEM
+
+    # 🔥 RESPONSES (HINDI KO BINAGO)
     responses = {
         "hello": [
             {"text": "hellow"},
             {"url": "https://tenor.com/view/hi-dog-gif-9693408977083628631"}
         ],
-
-        "kupal": [
-            {"file": "media/kupal.mp4"}
-        ],
-
-        "burat": [
-            {"text": "mahilig ka siguro sa burat"}
-        ],
-
-        "tangina": [
-            {"text": "tanginamo rin 🖕"}
-        ],
-
+        "kupal": [{"file": "media/kupal.mp4"}],
+        "burat": [{"text": "mahilig ka siguro sa burat"}],
+        "tangina": [{"text": "tanginamo rin 🖕"}],
         "ulol": [
             {"text": "ulol mo blue, balik mo muna utak mo bago ka mag chat"},
             {"file": "media/ulol.mp3"}
         ],
-
-        "eduj": [
-            {"text": "bading yan!"}
-        ],
-
-        "bisaya": [
-            {"text": "ulol, kala mo naman hindi ka bisaya"}
-        ],
-
+        "eduj": [{"text": "bading yan!"}],
+        "bisaya": [{"text": "ulol, kala mo naman hindi ka bisaya"}],
         "bobo": [
             {"text": "mas bobo ka"},
             {"text": "tangina mo ikaw pinaka bobo dito"}
         ],
-
         "tanga": [
             {"text": "tangina mo, mas tanga ka"},
             {"text": "tanga ka rin"}
         ]
     }
 
-    # 🔥 LOOP
     for trigger, replies in responses.items():
         if trigger in content:
             choice = random.choice(replies)
@@ -193,8 +182,7 @@ User message: {message.content}
                 await message.reply(choice["text"])
 
             if "file" in choice:
-                file = discord.File(choice["file"])
-                await message.reply(file=file)
+                await message.reply(file=discord.File(choice["file"]))
 
             if "url" in choice:
                 await message.channel.send(choice["url"])
@@ -203,6 +191,7 @@ User message: {message.content}
 
     await bot.process_commands(message)
 
+# 🔥 READY
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
