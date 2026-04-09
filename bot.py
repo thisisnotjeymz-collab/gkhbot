@@ -1,11 +1,10 @@
 import os
 import asyncio
-import random
 import discord
 from google import genai
 from discord.ext import commands, tasks
 
-# 🔥 CONFIG (AI)
+# ===== GEMINI CONFIG =====
 MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 AI_MODE = os.getenv("AI_MODE", "normal")
 AI_MAX_CHARS = int(os.getenv("AI_MAX_CHARS", "300"))
@@ -23,10 +22,9 @@ def get_ai_prompt(mode):
     else:
         return "You are the Discord bot of GKH. Reply in simple Taglish, short, natural, and a little funny."
 
-# 🔥 GEMINI
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-# 🔥 BOT SETUP
+# ===== BOT SETUP =====
 statuses = [
     discord.Game("Join GKH Now"),
     discord.Game("GKH #1")
@@ -48,14 +46,14 @@ bot = commands.Bot(
     status=discord.Status.online
 )
 
-# 🔥 STATUS LOOP
+# ===== STATUS LOOP =====
 @tasks.loop(seconds=10)
 async def change_status():
     for status in statuses:
         await bot.change_presence(activity=status)
         await asyncio.sleep(10)
 
-# 🔥 VC CONNECT
+# ===== VC CONNECT =====
 async def connect_to_vc():
     if VC_CHANNEL_ID == 0:
         print("VC_CHANNEL_ID is missing.")
@@ -87,26 +85,7 @@ async def connect_to_vc():
     except Exception as e:
         print(f"Error connecting to VC: {e}")
 
-# 🔥 COMMANDS
-@bot.tree.command(name="join")
-async def join(interaction: discord.Interaction):
-    await connect_to_vc()
-    await interaction.response.send_message("Trying to join VC", ephemeral=True)
-
-@bot.tree.command(name="leave")
-async def leave(interaction: discord.Interaction):
-    vc = interaction.guild.voice_client
-    if vc and vc.is_connected():
-        await vc.disconnect()
-        await interaction.response.send_message("Left VC", ephemeral=True)
-    else:
-        await interaction.response.send_message("Bot is not in a VC", ephemeral=True)
-
-@bot.tree.command(name="ping")
-async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message("Bot is alive", ephemeral=True)
-
-# 🔥 MAIN MESSAGE EVENT
+# ===== AI CHAT =====
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -115,9 +94,6 @@ async def on_message(message):
     if not message.guild:
         return
 
-    content = message.content.lower()
-
-    # 🤖 GEMINI AI
     if bot.user in message.mentions:
         user_id = message.author.id
         now = asyncio.get_event_loop().time()
@@ -129,19 +105,21 @@ async def on_message(message):
         last_ai_use[user_id] = now
 
         try:
-            prompt = get_ai_prompt(AI_MODE)
+            async with message.channel.typing():
+                prompt = get_ai_prompt(AI_MODE)
 
-            response = gemini_client.models.generate_content(
-                model=MODEL_NAME,
-                contents=f"{prompt}\n\nUser message: {message.content}"
-            )
+                response = gemini_client.models.generate_content(
+                    model=MODEL_NAME,
+                    contents=f"{prompt}\n\nUser message: {message.content}"
+                )
 
-            reply_text = getattr(response, "text", None)
+                reply_text = getattr(response, "text", None)
 
-            if reply_text and reply_text.strip():
-                await message.reply(reply_text[:AI_MAX_CHARS])
-            else:
-                await message.channel.send("di ako makasagot ngayon")
+                if reply_text and reply_text.strip():
+                    await asyncio.sleep(1.5)
+                    await message.reply(reply_text[:AI_MAX_CHARS])
+                else:
+                    await message.channel.send("di ako makasagot ngayon")
 
         except Exception as e:
             print(f"Gemini error: {e}")
@@ -149,55 +127,12 @@ async def on_message(message):
 
         return
 
-    # 🔥 RESPONSES (HINDI KO BINAGO)
-    responses = {
-        "hello": [
-            {"text": "hellow"},
-            {"url": "https://tenor.com/view/hi-dog-gif-9693408977083628631"}
-        ],
-        "kupal": [{"file": "media/kupal.mp4"}],
-        "burat": [{"text": "mahilig ka siguro sa burat"}],
-        "tangina": [{"text": "tanginamo rin 🖕"}],
-        "ulol": [
-            {"text": "ulol mo blue, balik mo muna utak mo bago ka mag chat"},
-            {"file": "media/ulol.mp3"}
-        ],
-        "eduj": [{"text": "bading yan!"}],
-        "bisaya": [{"text": "ulol, kala mo naman hindi ka bisaya"}],
-        "bobo": [
-            {"text": "mas bobo ka"},
-            {"text": "tangina mo ikaw pinaka bobo dito"}
-        ],
-        "tanga": [
-            {"text": "tangina mo, mas tanga ka"},
-            {"text": "tanga ka rin"}
-        ]
-    }
-
-    for trigger, replies in responses.items():
-        if trigger in content:
-            choice = random.choice(replies)
-
-            if "text" in choice:
-                await message.reply(choice["text"])
-
-            if "file" in choice:
-                await message.reply(file=discord.File(choice["file"]))
-
-            if "url" in choice:
-                await message.channel.send(choice["url"])
-
-            break
-
     await bot.process_commands(message)
 
-# 🔥 READY
+# ===== READY =====
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
-
-    synced = await bot.tree.sync()
-    print(f"Synced {len(synced)} commands")
 
     if not change_status.is_running():
         change_status.start()
