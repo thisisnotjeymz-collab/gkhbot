@@ -83,6 +83,8 @@ async def leave(interaction: discord.Interaction):
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("Bot is alive", ephemeral=True)
 
+import random
+
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -93,22 +95,40 @@ async def on_message(message):
 
     content = message.content.lower()
 
-    if "hello" in content:
-        await message.reply("hellow")
-    elif "burat" in content:
-        await message.reply("mahilig ka siguro sa burat")
-    elif "tangina" in content:
-        await message.reply("tanginamo rin 🖕")
-    elif "help" in content:
-        await message.reply("open a ticket sa desk if may concern ka")
-    elif "ulol" in content:
-        await message.reply("ulol mo blue, balik mo muna utak mo bago ka mag chat")
-    elif "eduj" in content:
-        await message.reply("bading yan!")
-    elif "bobo" in content:
-        await message.reply("mas bobo ka")
-    elif message.mention_everyone:
+    # 🔥 priority: ping detection
+    if message.mention_everyone:
         await message.reply("nag ping nanaman ng bwakanangina")
+        return
+
+# 🔥 auto responses (organized)
+responses = {
+    "hello": [
+        "hellow",
+        "https://tenor.com/view/hi-dog-gif-9693408977083628631"
+    ],
+    "burat": ["mahilig ka siguro sa burat"],
+    "tangina": ["tanginamo rin 🖕"],
+    "ulol": ["ulol mo blue, balik mo muna utak mo bago ka mag chat"],
+    "eduj": ["bading yan!"],
+    "bisaya": ["ulol, kala mo naman hindi ka bisaya"],
+    "bobo": [
+        "mas bobo ka",
+        "ulol ikaw nga",
+        "tangina mo ikaw pinaka bobo dito"
+    ]
+    "tanga": [
+    "tangina mo, mas tanga ka",
+    "tanga mo, ikaw nga mas tanga eh",
+    "ulol, ikaw pa nagsabi nyan?"
+]
+
+}
+
+    # 🔥 loop checker
+    for trigger, replies in responses.items():
+        if trigger in content:
+            await message.reply(random.choice(replies))
+            break
 
     await bot.process_commands(message)
 
