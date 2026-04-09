@@ -99,9 +99,9 @@ async def on_message(message):
         await message.reply("nag ping nanaman ng bwakanangina")
         return
 
-    # 🔥 AUDIO
+    # 🔥 VIDEO
     if "kupal" in content:
-        file = discord.File("media/kupal.mp3")
+        file = discord.File("media/kupal.mp4")
         await message.reply(file=file)
         return
 
