@@ -107,8 +107,8 @@ async def on_message(message):
         await message.reply("bading yan!")
     elif "bobo" in content:
         await message.reply("mas bobo ka")
-    elif "@everyone" in content:
-        await message.reply("nag ping nanaman ang bwakanangina")
+    elif message.mention_everyone:
+        await message.reply("nag ping nanaman ng bwakanangina")
 
     await bot.process_commands(message)
 
