@@ -105,7 +105,7 @@ async def on_message(message):
     if bot.user in message.mentions:
         try:
             response = gemini_client.models.generate_content(
-                model="gemini-3-flash",
+                model="gemini-2.5-flash",
                 contents=f"""
 You are the Discord bot of GKH.
 Reply in simple Taglish.
