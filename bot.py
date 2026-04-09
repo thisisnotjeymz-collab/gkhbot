@@ -94,15 +94,18 @@ async def on_message(message):
 
     content = message.content.lower()
 
+    # 🔥 ping
     if message.mention_everyone:
         await message.reply("nag ping nanaman ng bwakanangina")
         return
 
-if "kupal" in content:
-    file = discord.File("media/kupal.mp3")
-    await message.reply(file=file)
-    return
+    # 🔥 AUDIO
+    if "kupal" in content:
+        file = discord.File("media/kupal.mp3")
+        await message.reply(file=file)
+        return
 
+    # 🔥 TEXT RESPONSES
     responses = {
         "hello": [
             "hellow",
