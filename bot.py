@@ -4,8 +4,8 @@ import discord
 from discord.ext import commands, tasks
 
 statuses = [
-    discord.Game("Join Veloriax 〆"),
-    discord.Game("Elevated 〆")
+    discord.Game("GKH #1"),
+    discord.Game("Join GKH Now")
 ]
 
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -20,7 +20,7 @@ intents.voice_states = True
 bot = commands.Bot(
     command_prefix="!",
     intents=intents,
-    activity=discord.Game("Elevated 〆"),
+    activity=discord.Game("GKH #1"),
     status=discord.Status.online
 )
 
