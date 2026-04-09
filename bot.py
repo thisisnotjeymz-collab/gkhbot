@@ -98,10 +98,10 @@ async def on_message(message):
         await message.reply("nag ping nanaman ng bwakanangina")
         return
 
-    if "kupal" in content:
-        file = discord.File("kupal.mp3")
-        await message.reply(file=file)
-        return
+if "kupal" in content:
+    file = discord.File("media/kupal.mp3")
+    await message.reply(file=file)
+    return
 
     responses = {
         "hello": [
