@@ -84,6 +84,9 @@ async def leave(interaction: discord.Interaction):
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("Bot is alive", ephemeral=True)
 
+import random
+import discord
+
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -99,36 +102,67 @@ async def on_message(message):
         await message.reply("nag ping nanaman ng bwakanangina")
         return
 
-    # 🔥 VIDEO
-    if "kupal" in content:
-        file = discord.File("media/kupal.mp4")
-        await message.reply(file=file)
-        return
-
-    # 🔥 TEXT RESPONSES
+    # 🔥 ALL RESPONSES SYSTEM
     responses = {
         "hello": [
-            "hellow",
-            "https://tenor.com/view/hi-dog-gif-9693408977083628631"
+            {"text": "hellow"},
+            {"url": "https://tenor.com/view/hi-dog-gif-9693408977083628631"}
         ],
-        "burat": ["mahilig ka siguro sa burat"],
-        "tangina": ["tanginamo rin 🖕"],
-        "ulol": ["ulol mo blue, balik mo muna utak mo bago ka mag chat"],
-        "eduj": ["bading yan!"],
-        "bisaya": ["ulol, kala mo naman hindi ka bisaya"],
+
+        "kupal": [
+            {"file": "media/kupal.mp4"}
+        ],
+
+        "burat": [
+            {"text": "mahilig ka siguro sa burat"}
+        ],
+
+        "tangina": [
+            {"text": "tanginamo rin 🖕"}
+        ],
+
+        "ulol": [
+            {"text": "ulol mo blue, balik mo muna utak mo bago ka mag chat"},
+            {"file": "media/ulol.mp3"}
+        ],
+
+        "eduj": [
+            {"text": "bading yan!"}
+        ],
+
+        "bisaya": [
+            {"text": "ulol, kala mo naman hindi ka bisaya"}
+        ],
+
         "bobo": [
-            "mas bobo ka",
-            "tangina mo ikaw pinaka bobo dito"
+            {"text": "mas bobo ka"},
+            {"text": "tangina mo ikaw pinaka bobo dito"}
         ],
+
         "tanga": [
-            "tangina mo, mas tanga ka",
-            "tanga ka rin"
+            {"text": "tangina mo, mas tanga ka"},
+            {"text": "tanga ka rin"}
         ]
     }
 
+    # 🔥 LOOP
     for trigger, replies in responses.items():
         if trigger in content:
-            await message.reply(random.choice(replies))
+            choice = random.choice(replies)
+
+            # text
+            if "text" in choice:
+                await message.reply(choice["text"])
+
+            # file (audio/video)
+            if "file" in choice:
+                file = discord.File(choice["file"])
+                await message.reply(file=file)
+
+            # url (gif/link)
+            if "url" in choice:
+                await message.channel.send(choice["url"])
+
             break
 
     await bot.process_commands(message)
