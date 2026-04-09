@@ -103,21 +103,32 @@ async def on_message(message):
 
     # 🤖 GEMINI AI reply pag minention ang bot
     if bot.user in message.mentions:
+        user_id = message.author.id
+        now = asyncio.get_event_loop().time()
+
+        # cooldown
+        if user_id in last_ai_use:
+            if now - last_ai_use[user_id] < AI_COOLDOWN:
+                return
+
+        last_ai_use[user_id] = now
+
         try:
+            prompt = get_ai_prompt(AI_MODE)
+
             response = gemini_client.models.generate_content(
-                model="gemini-1.5-flash",
+                model=MODEL_NAME,
                 contents=f"""
-You are the Discord bot of GKH.
-Reply in simple Taglish.
-Keep replies short, natural, and a little funny.
+{prompt}
+
 User message: {message.content}
 """
             )
 
             reply_text = getattr(response, "text", None)
 
-            if reply_text:
-                await message.reply(reply_text)
+            if reply_text and reply_text.strip():
+                await message.reply(reply_text[:AI_MAX_CHARS])
             else:
                 await message.channel.send("di ako makasagot ngayon")
 
@@ -126,12 +137,6 @@ User message: {message.content}
             await message.channel.send("di ako makasagot ngayon")
 
         return
-
-    # 🔥 ping
-    if message.mention_everyone:
-        await message.reply("nag ping nanaman ng bwakanangina")
-        return
-
     # 🔥 ALL RESPONSES SYSTEM
     responses = {
         "hello": [
