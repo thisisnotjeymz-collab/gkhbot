@@ -104,16 +104,15 @@ async def on_message(message):
     # 🤖 GEMINI AI reply pag minention ang bot
     if bot.user in message.mentions:
         try:
-            response = gemini_client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=f"""
+response = gemini_client.models.generate_content(
+    model="gemini-1.5-flash",
+    contents=f"""
 You are the Discord bot of GKH.
 Reply in simple Taglish.
 Keep replies short, natural, and a little funny.
 User message: {message.content}
 """
-            )
-
+)
             reply_text = getattr(response, "text", None)
 
             if reply_text:
