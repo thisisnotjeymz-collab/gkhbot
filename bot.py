@@ -115,7 +115,7 @@ responses = {
         "mas bobo ka",
         "ulol ikaw nga",
         "tangina mo ikaw pinaka bobo dito"
-    ]
+    ],
     "tanga": [
     "tangina mo, mas tanga ka",
     "tanga mo, ikaw nga mas tanga eh",
