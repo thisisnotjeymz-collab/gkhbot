@@ -1,0 +1,138 @@
+import os
+import asyncio
+import discord
+from discord.ext import commands, tasks
+
+statuses = [
+    discord.Game("Join Veloriax 〆"),
+    discord.Game("Elevated 〆")
+]
+
+TOKEN = os.getenv("DISCORD_TOKEN")
+VC_CHANNEL_ID = int(os.getenv("VC_CHANNEL_ID", "0"))
+
+intents = discord.Intents.default()
+intents.message_content = True
+intents.guilds = True
+intents.messages = True
+intents.voice_states = True
+
+bot = commands.Bot(
+    command_prefix="!",
+    intents=intents,
+    activity=discord.Game("Elevated 〆"),
+    status=discord.Status.online
+)
+
+@tasks.loop(seconds=10)
+async def change_status():
+    for status in statuses:
+        await bot.change_presence(activity=status)
+        await asyncio.sleep(10)
+
+async def connect_to_vc():
+    if VC_CHANNEL_ID == 0:
+        print("VC_CHANNEL_ID is missing.")
+        return
+
+    channel = bot.get_channel(VC_CHANNEL_ID)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(VC_CHANNEL_ID)
+        except Exception as e:
+            print(f"Failed to fetch channel: {e}")
+            return
+
+    if not isinstance(channel, discord.VoiceChannel):
+        print("Selected channel is not a voice channel.")
+        return
+
+    voice_client = channel.guild.voice_client
+
+    try:
+        if voice_client and voice_client.is_connected():
+            if voice_client.channel.id != channel.id:
+                await voice_client.move_to(channel)
+            return
+
+        await channel.connect()
+        print(f"Connected to VC: {channel.name}")
+
+    except Exception as e:
+        print(f"Error connecting to VC: {e}")
+
+@bot.tree.command(name="join", description="Make the bot join the VC")
+async def join(interaction: discord.Interaction):
+    await connect_to_vc()
+    await interaction.response.send_message("Trying to join VC", ephemeral=True)
+
+@bot.tree.command(name="leave", description="Make the bot leave the VC")
+async def leave(interaction: discord.Interaction):
+    if interaction.guild is None:
+        await interaction.response.send_message("Server only command.", ephemeral=True)
+        return
+
+    vc = interaction.guild.voice_client
+    if vc and vc.is_connected():
+        await vc.disconnect()
+        await interaction.response.send_message("Left VC", ephemeral=True)
+    else:
+        await interaction.response.send_message("Bot is not in a VC", ephemeral=True)
+
+@bot.tree.command(name="ping", description="Check if the bot is online")
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message("Bot is alive", ephemeral=True)
+
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    if not message.guild:
+        return
+
+    content = message.content.lower()
+
+    if "hello" in content:
+        await message.reply("hellow")
+    elif "burat" in content:
+        await message.reply("mahilig ka siguro sa burat")
+    elif "tangina" in content:
+        await message.reply("tanginamo rin 🖕")
+    elif "help" in content:
+        await message.reply("open a ticket sa desk if may concern ka")
+    elif "ulol" in content:
+        await message.reply("ulol mo blue, balik mo muna utak mo bago ka mag chat")
+    elif "eduj" in content:
+        await message.reply("bading yan!")
+    elif "bobo" in content:
+        await message.reply("mas bobo ka")
+
+    await bot.process_commands(message)
+
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+
+    synced = await bot.tree.sync()
+    print(f"Synced {len(synced)} commands")
+
+    if not change_status.is_running():
+        change_status.start()
+
+    await connect_to_vc()
+
+    if not keep_vc_alive.is_running():
+        keep_vc_alive.start()
+
+@tasks.loop(seconds=60)
+async def keep_vc_alive():
+    await connect_to_vc()
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+    if bot.user and member.id == bot.user.id and after.channel is None:
+        await asyncio.sleep(3)
+        await connect_to_vc()
+
+bot.run(TOKEN)
