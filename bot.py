@@ -87,9 +87,9 @@ async def ping(interaction: discord.Interaction):
 import random
 import discord
 import os
-from openai import OpenAI
+from google import genai
 
-client_ai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 @bot.event
 async def on_message(message):
@@ -101,27 +101,30 @@ async def on_message(message):
 
     content = message.content.lower()
 
-    # 🤖 AI reply pag minention ang bot
+    # 🤖 GEMINI AI reply pag minention ang bot
     if bot.user in message.mentions:
         try:
-            ai_response = client_ai.responses.create(
-                model="gpt-4o-mini",
-                input=[
-                    {
-                        "role": "system",
-                        "content": "You are the Discord bot of GKH. Reply in simple Taglish, short, natural, a little funny, and not too long."
-                    },
-                    {
-                        "role": "user",
-                        "content": message.content
-                    }
-                ]
+            response = gemini_client.models.generate_content(
+                model="gemini-3-flash",
+                contents=f"""
+You are the Discord bot of GKH.
+Reply in simple Taglish.
+Keep replies short, natural, and a little funny.
+User message: {message.content}
+"""
             )
 
-            await message.reply(ai_response.output_text)
+            reply_text = getattr(response, "text", None)
+
+            if reply_text:
+                await message.reply(reply_text)
+            else:
+                await message.channel.send("di ako makasagot ngayon")
+
         except Exception as e:
-            print(f"OpenAI error: {e}")
-            await message.reply("di ako makasagot ngayon")
+            print(f"Gemini error: {e}")
+            await message.channel.send("di ako makasagot ngayon")
+
         return
 
     # 🔥 ping
@@ -177,16 +180,13 @@ async def on_message(message):
         if trigger in content:
             choice = random.choice(replies)
 
-            # text
             if "text" in choice:
                 await message.reply(choice["text"])
 
-            # file (audio/video)
             if "file" in choice:
                 file = discord.File(choice["file"])
                 await message.reply(file=file)
 
-            # url (gif/link)
             if "url" in choice:
                 await message.channel.send(choice["url"])
 
