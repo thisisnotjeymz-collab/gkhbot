@@ -1,4 +1,5 @@
-discord.py[voice]
-PyNaCl>=1.5.0
+discord.py
+python-dotenv
 google-genai
 openai
+PyNaCl
