@@ -5,6 +5,10 @@ import discord
 from google import genai
 from openai import OpenAI
 from discord.ext import commands, tasks
+from discord import app_commands
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ===== CONFIG =====
 MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
@@ -14,211 +18,118 @@ AI_COOLDOWN = int(os.getenv("AI_COOLDOWN", "3"))
 AUTO_REPLY_CHANCE = float(os.getenv("AUTO_REPLY_CHANCE", "0"))
 MEMORY_TURNS = int(os.getenv("MEMORY_TURNS", "6"))
 
-# OpenRouter free fallback
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3.1:free")
 
 last_ai_use = {}
 CHAT_MEMORY = {}
 USER_PROFILE = {}
 
+# ===== AI STYLE =====
 def get_ai_prompt(mode):
     if mode == "toxic":
-        return "You are the Discord bot of GKH. Reply in short Taglish. Be funny, playful, slightly toxic."
-    elif mode == "chill":
-        return "You are the Discord bot of GKH. Reply in calm, friendly, casual Taglish."
-    elif mode == "admin":
-        return "You are the Discord bot of GKH. Reply like a helpful Discord admin. Be clear and direct."
-    else:
-        return "You are the Discord bot of GKH. Reply in simple Taglish, short, natural, and a little funny."
+        return "Reply in short Taglish. Medyo toxic pero funny."
+    return "Reply in simple Taglish, short and natural."
 
-def get_user_profile(user_id: str):
+def get_user_profile(user_id):
     if user_id not in USER_PROFILE:
-        USER_PROFILE[user_id] = {
-            "style": "normal",
-            "insult_count": 0,
-            "last_insults": []
-        }
+        USER_PROFILE[user_id] = {"insult_count": 0}
     return USER_PROFILE[user_id]
 
-def detect_insult(text: str):
-    text = text.lower()
-    insult_words = ["bobo", "tanga", "ulol", "gago", "kupal", "tangina", "burat"]
-    return [word for word in insult_words if word in text]
+def detect_insult(text):
+    words = ["bobo", "tanga", "ulol", "gago", "kupal", "tangina"]
+    return [w for w in words if w in text.lower()]
 
-# ===== CLIENTS =====
+# ===== AI CLIENTS =====
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-openrouter_key = os.getenv("OPENROUTER_API_KEY")
 openrouter_client = None
-if openrouter_key:
+if os.getenv("OPENROUTER_API_KEY"):
     openrouter_client = OpenAI(
-        api_key=openrouter_key,
+        api_key=os.getenv("OPENROUTER_API_KEY"),
         base_url="https://openrouter.ai/api/v1"
     )
 
-# ===== BOT SETUP =====
-statuses = [
-    discord.Game("Join GKH Now"),
-    discord.Game("GKH #1")
-]
-
+# ===== BOT =====
 TOKEN = os.getenv("DISCORD_TOKEN")
 VC_CHANNEL_ID = int(os.getenv("VC_CHANNEL_ID", "0"))
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.guilds = True
-intents.messages = True
 intents.voice_states = True
 
-bot = commands.Bot(
-    command_prefix="!",
-    intents=intents,
-    activity=discord.Game("GKH #1"),
-    status=discord.Status.online
-)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ===== STATUS LOOP =====
+# ===== STATUS =====
 @tasks.loop(seconds=10)
 async def change_status():
-    for status in statuses:
-        await bot.change_presence(activity=status)
-        await asyncio.sleep(10)
+    await bot.change_presence(activity=discord.Game(random.choice(["Join GKH", "Veloriax 〆"])))
 
-# ===== VC CONNECT =====
+# ===== VC =====
 async def connect_to_vc():
     if VC_CHANNEL_ID == 0:
-        print("VC_CHANNEL_ID is missing.")
         return
-
-    channel = bot.get_channel(VC_CHANNEL_ID)
-    if channel is None:
-        try:
-            channel = await bot.fetch_channel(VC_CHANNEL_ID)
-        except Exception as e:
-            print(f"Failed to fetch channel: {e}")
-            return
-
-    if not isinstance(channel, discord.VoiceChannel):
-        print("Selected channel is not a voice channel.")
-        return
-
-    voice_client = channel.guild.voice_client
-
     try:
-        if voice_client and voice_client.is_connected():
-            if voice_client.channel.id != channel.id:
-                await voice_client.move_to(channel)
-            return
+        channel = bot.get_channel(VC_CHANNEL_ID)
+        if channel and isinstance(channel, discord.VoiceChannel):
+            if not channel.guild.voice_client:
+                await channel.connect()
+    except:
+        pass
 
-        await channel.connect()
-        print(f"Connected to VC: {channel.name}")
+# ===== ANNOUNCE COMMAND =====
+@bot.tree.command(name="announce", description="Send announcement")
+@app_commands.describe(message="Message", channel="Channel")
+async def announce(interaction: discord.Interaction, message: str, channel: discord.TextChannel = None):
 
-    except Exception as e:
-        print(f"Error connecting to VC: {e}")
+    if not interaction.user.guild_permissions.manage_messages:
+        await interaction.response.send_message("wala kang perms tanga", ephemeral=True)
+        return
 
-# ===== PROMPT BUILDER =====
-def build_prompt(message_content: str, profile: dict, memory_text: str) -> str:
-    base_prompt = get_ai_prompt(AI_MODE)
+    target = channel or interaction.channel
 
-    if profile["insult_count"] >= 8:
-        personality_note = (
-            "This user often teases you. Reply playfully and sarcastically, "
-            "but keep it short and not too aggressive."
+    embed = discord.Embed(
+        title="📢 Announcement",
+        description=message,
+        color=discord.Color.blurple()
+    )
+    embed.set_footer(text=f"By {interaction.user}")
+
+    await target.send(embed=embed)
+    await interaction.response.send_message("sent na boss", ephemeral=True)
+
+# ===== AI RESPONSE =====
+async def try_gemini(prompt):
+    try:
+        res = gemini_client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt
         )
-    elif profile["insult_count"] >= 3:
-        personality_note = (
-            "This user sometimes teases you. Reply with a playful, slightly sarcastic tone."
-        )
-    else:
-        personality_note = "This user is normal. Reply in your default tone."
-
-    recent_insults = ", ".join(profile["last_insults"]) if profile["last_insults"] else "none"
-
-    return f"""
-{base_prompt}
-
-You are chatting in a Discord server called GKH.
-
-User profile:
-- current style: {profile["style"]}
-- insult count: {profile["insult_count"]}
-- recent insults used by the user: {recent_insults}
-
-Behavior rule:
-{personality_note}
-
-Recent conversation:
-{memory_text}
-
-Reply naturally to the latest user message:
-{message_content}
-"""
-
-# ===== FALLBACKS =====
-async def try_gemini(prompt: str):
-    models = [
-        MODEL_NAME,
-        "gemini-2.5-flash-lite",
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-    ]
-
-    for model in models:
-        for attempt in range(2):
-            try:
-                response = gemini_client.models.generate_content(
-                    model=model,
-                    contents=prompt
-                )
-                reply_text = getattr(response, "text", None)
-                if reply_text and reply_text.strip():
-                    print(f"✅ Gemini success using {model}")
-                    return reply_text
-            except Exception as e:
-                print(f"❌ Gemini {model} failed attempt {attempt + 1}: {e}")
-                await asyncio.sleep(1)
-    return None
-
-async def try_openrouter(prompt: str):
-    if not openrouter_client:
+        return getattr(res, "text", None)
+    except:
         return None
 
+async def try_openrouter(prompt):
+    if not openrouter_client:
+        return None
     try:
-        response = openrouter_client.chat.completions.create(
+        res = openrouter_client.chat.completions.create(
             model=OPENROUTER_MODEL,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
+            messages=[{"role": "user", "content": prompt}]
         )
-        text = response.choices[0].message.content
-        if text and text.strip():
-            print(f"✅ OpenRouter success using {OPENROUTER_MODEL}")
-            return text
-    except Exception as e:
-        print(f"❌ OpenRouter failed: {e}")
+        return res.choices[0].message.content
+    except:
+        return None
 
-    return None
-
-# ===== AI CHAT =====
+# ===== MESSAGE EVENT =====
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    if not message.guild:
-        return
-
     user_id = str(message.author.id)
     now = asyncio.get_event_loop().time()
 
-    should_reply = False
-    if bot.user in message.mentions:
-        should_reply = True
-    elif AUTO_REPLY_CHANCE > 0 and random.random() < AUTO_REPLY_CHANCE:
-        should_reply = True
-
-    if not should_reply:
+    if bot.user not in message.mentions:
         await bot.process_commands(message)
         return
 
@@ -227,49 +138,23 @@ async def on_message(message):
 
     last_ai_use[user_id] = now
 
-    if user_id not in CHAT_MEMORY:
-        CHAT_MEMORY[user_id] = []
-
     profile = get_user_profile(user_id)
-    found_insults = detect_insult(message.content)
+    insults = detect_insult(message.content)
 
-    if found_insults:
-        profile["insult_count"] += len(found_insults)
-        profile["last_insults"].extend(found_insults)
-        profile["last_insults"] = profile["last_insults"][-5:]
+    if insults:
+        profile["insult_count"] += len(insults)
 
-    if profile["insult_count"] >= 8:
-        profile["style"] = "chaos"
-    elif profile["insult_count"] >= 3:
-        profile["style"] = "playful"
-    else:
-        profile["style"] = "normal"
+    prompt = f"{get_ai_prompt(AI_MODE)}\nUser: {message.content}"
 
-    CHAT_MEMORY[user_id].append(f"User: {message.content}")
-    CHAT_MEMORY[user_id] = CHAT_MEMORY[user_id][-MEMORY_TURNS:]
+    async with message.channel.typing():
+        reply = await try_gemini(prompt)
+        if not reply:
+            reply = await try_openrouter(prompt)
 
-    memory_text = "\n".join(CHAT_MEMORY[user_id])
-    prompt = build_prompt(message.content, profile, memory_text)
-
-    try:
-        async with message.channel.typing():
-            reply_text = await try_gemini(prompt)
-
-            if not reply_text:
-                reply_text = await try_openrouter(prompt)
-
-            if reply_text and reply_text.strip():
-                reply_text = reply_text[:AI_MAX_CHARS]
-                CHAT_MEMORY[user_id].append(f"Bot: {reply_text}")
-                CHAT_MEMORY[user_id] = CHAT_MEMORY[user_id][-MEMORY_TURNS:]
-                await asyncio.sleep(random.uniform(1, 2))
-                await message.reply(reply_text)
-            else:
-                await message.channel.send("busy si GKH, try mo ulit 😭")
-
-    except Exception as e:
-        print(f"AI error: {e}")
-        await message.channel.send("may topak si GKH ngayon 😭")
+        if reply:
+            await message.reply(reply[:AI_MAX_CHARS])
+        else:
+            await message.reply("busy ako ngayon 😭")
 
     await bot.process_commands(message)
 
@@ -278,22 +163,15 @@ async def on_message(message):
 async def on_ready():
     print(f"Logged in as {bot.user}")
 
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} commands")
+    except Exception as e:
+        print(e)
+
     if not change_status.is_running():
         change_status.start()
 
     await connect_to_vc()
-
-    if not keep_vc_alive.is_running():
-        keep_vc_alive.start()
-
-@tasks.loop(seconds=60)
-async def keep_vc_alive():
-    await connect_to_vc()
-
-@bot.event
-async def on_voice_state_update(member, before, after):
-    if bot.user and member.id == bot.user.id and after.channel is None:
-        await asyncio.sleep(3)
-        await connect_to_vc()
 
 bot.run(TOKEN)
