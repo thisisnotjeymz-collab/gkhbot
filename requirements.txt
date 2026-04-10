@@ -1,4 +1,4 @@
-discord.py[vc]
+discord.py
 google-genai
 openai
 PyNaCl
