@@ -3,15 +3,19 @@ import asyncio
 import random
 import discord
 from google import genai
+from openai import OpenAI
 from discord.ext import commands, tasks
 
-# ===== GEMINI CONFIG =====
+# ===== CONFIG =====
 MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 AI_MODE = os.getenv("AI_MODE", "normal")
 AI_MAX_CHARS = int(os.getenv("AI_MAX_CHARS", "300"))
 AI_COOLDOWN = int(os.getenv("AI_COOLDOWN", "3"))
 AUTO_REPLY_CHANCE = float(os.getenv("AUTO_REPLY_CHANCE", "0"))
 MEMORY_TURNS = int(os.getenv("MEMORY_TURNS", "6"))
+
+# OpenRouter free fallback
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3.1:free")
 
 last_ai_use = {}
 CHAT_MEMORY = {}
@@ -39,10 +43,18 @@ def get_user_profile(user_id: str):
 def detect_insult(text: str):
     text = text.lower()
     insult_words = ["bobo", "tanga", "ulol", "gago", "kupal", "tangina", "burat"]
-    found = [word for word in insult_words if word in text]
-    return found
+    return [word for word in insult_words if word in text]
 
+# ===== CLIENTS =====
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+openrouter_key = os.getenv("OPENROUTER_API_KEY")
+openrouter_client = None
+if openrouter_key:
+    openrouter_client = OpenAI(
+        api_key=openrouter_key,
+        base_url="https://openrouter.ai/api/v1"
+    )
 
 # ===== BOT SETUP =====
 statuses = [
@@ -105,6 +117,89 @@ async def connect_to_vc():
     except Exception as e:
         print(f"Error connecting to VC: {e}")
 
+# ===== PROMPT BUILDER =====
+def build_prompt(message_content: str, profile: dict, memory_text: str) -> str:
+    base_prompt = get_ai_prompt(AI_MODE)
+
+    if profile["insult_count"] >= 8:
+        personality_note = (
+            "This user often teases you. Reply playfully and sarcastically, "
+            "but keep it short and not too aggressive."
+        )
+    elif profile["insult_count"] >= 3:
+        personality_note = (
+            "This user sometimes teases you. Reply with a playful, slightly sarcastic tone."
+        )
+    else:
+        personality_note = "This user is normal. Reply in your default tone."
+
+    recent_insults = ", ".join(profile["last_insults"]) if profile["last_insults"] else "none"
+
+    return f"""
+{base_prompt}
+
+You are chatting in a Discord server called GKH.
+
+User profile:
+- current style: {profile["style"]}
+- insult count: {profile["insult_count"]}
+- recent insults used by the user: {recent_insults}
+
+Behavior rule:
+{personality_note}
+
+Recent conversation:
+{memory_text}
+
+Reply naturally to the latest user message:
+{message_content}
+"""
+
+# ===== FALLBACKS =====
+async def try_gemini(prompt: str):
+    models = [
+        MODEL_NAME,
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+    ]
+
+    for model in models:
+        for attempt in range(2):
+            try:
+                response = gemini_client.models.generate_content(
+                    model=model,
+                    contents=prompt
+                )
+                reply_text = getattr(response, "text", None)
+                if reply_text and reply_text.strip():
+                    print(f"✅ Gemini success using {model}")
+                    return reply_text
+            except Exception as e:
+                print(f"❌ Gemini {model} failed attempt {attempt + 1}: {e}")
+                await asyncio.sleep(1)
+    return None
+
+async def try_openrouter(prompt: str):
+    if not openrouter_client:
+        return None
+
+    try:
+        response = openrouter_client.chat.completions.create(
+            model=OPENROUTER_MODEL,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        text = response.choices[0].message.content
+        if text and text.strip():
+            print(f"✅ OpenRouter success using {OPENROUTER_MODEL}")
+            return text
+    except Exception as e:
+        print(f"❌ OpenRouter failed: {e}")
+
+    return None
+
 # ===== AI CHAT =====
 @bot.event
 async def on_message(message):
@@ -118,7 +213,6 @@ async def on_message(message):
     now = asyncio.get_event_loop().time()
 
     should_reply = False
-
     if bot.user in message.mentions:
         should_reply = True
     elif AUTO_REPLY_CHANCE > 0 and random.random() < AUTO_REPLY_CHANCE:
@@ -128,9 +222,8 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    if user_id in last_ai_use:
-        if now - last_ai_use[user_id] < AI_COOLDOWN:
-            return
+    if user_id in last_ai_use and now - last_ai_use[user_id] < AI_COOLDOWN:
+        return
 
     last_ai_use[user_id] = now
 
@@ -138,8 +231,8 @@ async def on_message(message):
         CHAT_MEMORY[user_id] = []
 
     profile = get_user_profile(user_id)
-
     found_insults = detect_insult(message.content)
+
     if found_insults:
         profile["insult_count"] += len(found_insults)
         profile["last_insults"].extend(found_insults)
@@ -155,79 +248,27 @@ async def on_message(message):
     CHAT_MEMORY[user_id].append(f"User: {message.content}")
     CHAT_MEMORY[user_id] = CHAT_MEMORY[user_id][-MEMORY_TURNS:]
 
+    memory_text = "\n".join(CHAT_MEMORY[user_id])
+    prompt = build_prompt(message.content, profile, memory_text)
+
     try:
         async with message.channel.typing():
-            base_prompt = get_ai_prompt(AI_MODE)
+            reply_text = await try_gemini(prompt)
 
-            if profile["insult_count"] >= 8:
-                personality_note = (
-                    "This user often teases you. Reply playfully and sarcastically, "
-                    "but keep it short and not too aggressive."
-                )
-            elif profile["insult_count"] >= 3:
-                personality_note = (
-                    "This user sometimes teases you. Reply with a playful, slightly sarcastic tone."
-                )
-            else:
-                personality_note = "This user is normal. Reply in your default tone."
-
-            recent_insults = ", ".join(profile["last_insults"]) if profile["last_insults"] else "none"
-            memory_text = "\n".join(CHAT_MEMORY[user_id])
-
-            prompt = f"""
-{base_prompt}
-
-You are chatting in a Discord server called GKH.
-
-User profile:
-- current style: {profile["style"]}
-- insult count: {profile["insult_count"]}
-- recent insults used by the user: {recent_insults}
-
-Behavior rule:
-{personality_note}
-
-Recent conversation:
-{memory_text}
-"""
-
-            models = [
-                MODEL_NAME,
-                "gemini-2.5-flash-lite",
-                "gemini-2.5-flash"
-            ]
-
-            reply_text = None
-
-            for model in models:
-                try:
-                    response = gemini_client.models.generate_content(
-                        model=model,
-                        contents=f"{prompt}\n\nReply naturally to the latest user message:\n{message.content}"
-                    )
-
-                    reply_text = getattr(response, "text", None)
-
-                    if reply_text and reply_text.strip():
-                        break
-
-                except Exception as e:
-                    print(f"Retry failed ({model}): {e}")
-                    await asyncio.sleep(1)
+            if not reply_text:
+                reply_text = await try_openrouter(prompt)
 
             if reply_text and reply_text.strip():
                 reply_text = reply_text[:AI_MAX_CHARS]
-
                 CHAT_MEMORY[user_id].append(f"Bot: {reply_text}")
                 CHAT_MEMORY[user_id] = CHAT_MEMORY[user_id][-MEMORY_TURNS:]
-
                 await asyncio.sleep(random.uniform(1, 2))
                 await message.reply(reply_text)
             else:
                 await message.channel.send("busy si GKH, try mo ulit 😭")
 
     except Exception as e:
-        print(f"Gemini error: {e}")
+        print(f"AI error: {e}")
         await message.channel.send("may topak si GKH ngayon 😭")
 
     await bot.process_commands(message)
